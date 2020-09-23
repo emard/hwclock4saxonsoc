@@ -28,6 +28,14 @@ void rtc_read(unsigned char *buf, int reg, int n)
   read(i2c_rtc, buf, n);
 }
 
+void rtc_write(unsigned char *buf, int reg, int n)
+{
+  unsigned char areg[1];
+  areg[0] = reg;
+  write(i2c_rtc, &areg, 1);
+  write(i2c_rtc, buf, n);
+}
+
 void i2cdemo(void)
 {
   int i;
@@ -54,55 +62,8 @@ int main_old(int argc, char *argv[])
   return 0;
 }
 
-/* define access to the I2C controller */
-
-static int
-dummy()
-{
-  return 1;
-}
-
-struct I2C {
-  int cmd;
-  int adr;
-};
-
-extern struct I2C i2c;
-
-#define DEV   (0x6f00)
-#define READ  (0x8000)
-#define WRITE (0x0000)
-#define sts   cmd
-
-int
-get(a)
-  int a;
-{
-  return a;
-/*
-  i2c.adr = DEV + a;
-  i2c.cmd = READ;
-  while( i2c.sts<0 );
-  return i2c.sts;
-*/
-}
-
-int
-put(a,v)
-  int a,v;
-{
-/*
-  i2c.adr = DEV + a;
-  i2c.cmd = WRITE + v;
-  while( i2c.sts<0 );
-  return i2c.sts;
-*/
-  return 0;
-}
-
 /* decomposed and Unix time storage */
 struct tm tmval;
-long tm;
 
 /* read decomposed time from RTC */
 int rd_time()
@@ -138,26 +99,37 @@ int rd_time()
 /* write Unix time to RTC */
 void wr_time()
 {
-  register struct tm *tvp;
-  register int v;
+  struct tm tv;
+  struct tm *tvp;
+  int v;
+  unsigned char buf[9];
 
-  //tvp = gmtime(&tm);
-  put(0, 0x00); /* stop clock */
-  put(7, 0x00); /* internal osc, no alarms, MFP off */
+  tvp = &tv;
+  tvp->tm_sec  = 1;
+  tvp->tm_min  = 2;
+  tvp->tm_hour = 3;
+  tvp->tm_wday = 3;
+  tvp->tm_mday = 23;
+  tvp->tm_mon  = 9-1;
+  tvp->tm_year = 20+100;
+  buf[0]=0; // write from reg 0
+  buf[1]=0x00; /* stop clock */
+  buf[8]=0x00; /* internal osc, no alarms, MFP off */
   v = tvp->tm_min;  v = (((v/10)<<4) + (v%10));
-  put(1, v); /* set minutes */
+  buf[2]=v; /* set minutes */
   v = tvp->tm_hour; v = (((v/10)<<4) + (v%10));
-  put(2, v); /* set hours, 24H mode */
+  buf[3]=v; /* set hours, 24H mode */
   v = tvp->tm_wday; v = (v&0x07) | 0x08;
-  put(3, v); /* set weekday, enable battery */
+  buf[4]=v; /* set weekday, enable battery */
   v = tvp->tm_mday; v = (((v/10)<<4) + (v%10));
-  put(4, v); /* set date */
+  buf[5]=v; /* set date */
   v = tvp->tm_mon + 1;  v = (((v/10)<<4) + (v%10));
-  put(5, v); /* set month */  
+  buf[6]=v; /* set month */  
   v = tvp->tm_year; v -= 100; v = (((v/10)<<4) + (v%10));
-  put(6, v); /* set year */  
+  buf[7]=v; /* set year */  
   v = tvp->tm_sec;  v = (((v/10)<<4) + (v%10)) | 0x80;
-  put(0, v); /* set seconds + restart clock */
+  buf[1]=v; /* set seconds + restart clock */
+  write(i2c_rtc, buf, sizeof(buf));
 }
 
 // gregorian formula
@@ -170,7 +142,7 @@ int days(int y, int m, int d)
      dm[1]=29;
    for(i = 0; i < (m-1)%12; i++)
      dc += dm[i%12];
-   return y*365 + (y%4?1:0) + y/4 - y/100 + y/400 + dc + d;
+   return y*365 + y/4 + (y%4?1:0) - y/100 + y/400 + dc + d;
 }
 
 unsigned long mk_time(void)
@@ -184,6 +156,39 @@ unsigned long mk_time(void)
   tm *= 60; tm += tmval.tm_min;
   tm *= 60; tm += tmval.tm_sec;
   return tm;
+}
+
+void setalarm(void)
+{
+  int i;
+  unsigned char buf[7];
+  unsigned char and[7] = {0, 0x7F, 0x7F, 0x3F, 0x07, 0x3F, 0x1F };
+  unsigned char or[7]  = {0, 0x00, 0x00, 0x00, 0x70, 0x00, 0x00 }; // full datetime match
+  buf[0]=7; // alarm enable reg
+  buf[1]=0x10; // enable only alarm0
+  write(i2c_rtc, buf, 2);
+  rtc_read(buf+1, 0, sizeof(buf)-1);
+  for(i = 0; i < sizeof(buf); i++)
+    printf(" %02x", buf[i]);
+  printf("\n");
+  buf[0] = 0xA; // alarm settings
+  buf[2] += 1; // alarm in 1 minute. FIXME wraparound, use unix timestamp
+  for(i = 1; i < sizeof(buf); i++)
+  {
+    buf[i] &= and[i];
+    buf[i] |= or[i];
+  }
+  write(i2c_rtc, buf, sizeof(buf));
+  //rtc_write(buf+1, 0xA, sizeof(buf)-1);
+  for(i = 0; i < sizeof(buf); i++)
+    printf(" %02x", buf[i]);
+  printf("\n");
+#if 0
+  rtc_read(buf+1, 0xA, sizeof(buf)-1);
+  for(i = 0; i < sizeof(buf); i++)
+    printf(" %02x", buf[i]);
+  printf("\n");
+#endif
 }
 
 int main(int argc, char *argv[])
@@ -212,8 +217,12 @@ int main(int argc, char *argv[])
 
     case 'w':
       printf("writing RTC time\n");
-      //time(&tm);
       wr_time();
+      break;
+
+    case 'a':
+      printf("setting RTC alarm 1 min in the future\n");
+      setalarm();
       break;
 
     case 's':
