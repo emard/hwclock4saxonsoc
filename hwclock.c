@@ -160,36 +160,25 @@ void wr_time()
   put(0, v); /* set seconds + restart clock */
 }
 
-/* Convert tmval to Unix time */
-
-int dmsize[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-
-int dysize(int y)
+// gregorian formula
+int days(int y, int m, int d)
 {
-  if (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0))
-    return 366;
-  return 365;
+   int i, dc = 0;
+   unsigned char dm[12] = {
+     31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+   if(y%4==0)
+     dm[1]=29;
+   for(i = 0; i < (m-1)%12; i++)
+     dc += dm[i%12];
+   return y*365 + (y%4?1:0) + y/4 - y/100 + y/400 + dc + d;
 }
 
 unsigned long mk_time(void)
 {
-  int i, yr, days, mon;
   unsigned long tm = 0;
 
-  /* calculate days since 1-1-1970 */
-  yr = 1900 + tmval.tm_year;
-  for(i=1970; i<yr; i++) {
-    days = dysize(i);
-    tm += days;
-  }
-  if (days == 366)
-    dmsize[1] = 29;
-  else
-    dmsize[1] = 28;
-  mon = tmval.tm_mon + 1;
-  while (--mon)
-    tm += dmsize[mon-1];
-  tm += (tmval.tm_mday - 2);
+  /* days since unix epoch */
+  tm = days(tmval.tm_year+1900, tmval.tm_mon+1, tmval.tm_mday)-719529;
   /* now convert to seconds and add seconds in current day */
   tm *= 24; tm += tmval.tm_hour;
   tm *= 60; tm += tmval.tm_min;
