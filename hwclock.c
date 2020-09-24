@@ -142,7 +142,7 @@ int days(int y, int m, int d)
      dm[1]=29;
    for(i = 0; i < m-1; i++)
      dc += dm[i];
-   return y*365 + y/4 + (y%4?1:0) - y/100 + y/400 + dc + d;
+   return y*365 + y/4 - (y%4?0:1) - y/100 + y/400 + dc + d;
 }
 
 unsigned long mk_time(void)
@@ -150,7 +150,7 @@ unsigned long mk_time(void)
   unsigned long tm = 0;
 
   /* days since unix epoch */
-  tm = days(tmval.tm_year+1900, tmval.tm_mon+1, tmval.tm_mday)-719529;
+  tm = days(tmval.tm_year+1900, tmval.tm_mon+1, tmval.tm_mday)-719528;
   /* now convert to seconds and add seconds in current day */
   tm *= 24; tm += tmval.tm_hour;
   tm *= 60; tm += tmval.tm_min;
