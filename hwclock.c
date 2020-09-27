@@ -140,9 +140,9 @@ int days(int y, int m, int d)
      31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
    if(y%4==0)
      dm[1]=29;
-   for(i = 0; i < m-1; i++)
-     dc += dm[i];
-   return y*365 + y/4 - (y%4?0:1) - y/100 + y/400 + dc + d;
+   for(i = 0; i < (m-1)%12; i++)
+     dc += dm[i%12];
+   return y*365 + y/4 + (y%4?1:0) - y/100 + y/400 + dc + d;
 }
 
 unsigned long mk_time(void)
@@ -150,7 +150,7 @@ unsigned long mk_time(void)
   unsigned long tm = 0;
 
   /* days since unix epoch */
-  tm = days(tmval.tm_year+1900, tmval.tm_mon+1, tmval.tm_mday)-719528;
+  tm = days(tmval.tm_year+1900, tmval.tm_mon+1, tmval.tm_mday)-719529;
   /* now convert to seconds and add seconds in current day */
   tm *= 24; tm += tmval.tm_hour;
   tm *= 60; tm += tmval.tm_min;
@@ -158,37 +158,66 @@ unsigned long mk_time(void)
   return tm;
 }
 
-void setalarm(void)
+unsigned char bin2bcd(unsigned char x)
+{
+  return (((x/10)&0xF)<<4)|(x%10);
+}
+
+void setalarm(int seconds)
 {
   int i;
+  long ut;
+  struct tm *alarm_datetime;
   unsigned char buf[7];
   unsigned char and[7] = {0, 0x7F, 0x7F, 0x3F, 0x07, 0x3F, 0x1F };
   unsigned char or[7]  = {0, 0x00, 0x00, 0x00, 0x70, 0x00, 0x00 }; // full datetime match
-  buf[0]=7; // alarm enable reg
-  buf[1]=0x10; // enable only alarm0
-  write(i2c_rtc, buf, 2);
   rtc_read(buf+1, 0, sizeof(buf)-1);
-  for(i = 0; i < sizeof(buf); i++)
-    printf(" %02x", buf[i]);
+  #if 0
+  for(i = sizeof(buf)-1; i > 0; i--)
+    printf(" %02x", buf[i]&and[i]);
   printf("\n");
+  #endif
+  // read datetime to tmval
+  rd_time();
+  // convert tmval datetime -> unix time
+  ut = mk_time();
+  // add delay, 60s currently
+  printf("current time %s",asctime(gmtime(&ut)));
+  ut += seconds;
+  printf("alarm set to %s",asctime(gmtime(&ut)));
+  // convert unix time -> date
+  alarm_datetime = gmtime(&ut);
+  // convert datetime to RTC buf
   buf[0] = 0xA; // alarm settings
-  buf[2] += 1; // alarm in 1 minute. FIXME wraparound, use unix timestamp
-  for(i = 1; i < sizeof(buf); i++)
+  buf[7] = bin2bcd(alarm_datetime->tm_year % 100);
+  buf[6] = bin2bcd(alarm_datetime->tm_mon + 1);
+  buf[5] = bin2bcd(alarm_datetime->tm_mday);
+  buf[4] = bin2bcd(alarm_datetime->tm_wday ? alarm_datetime->tm_wday : 7);
+  buf[3] = bin2bcd(alarm_datetime->tm_hour);
+  buf[2] = bin2bcd(alarm_datetime->tm_min);
+  buf[1] = bin2bcd(alarm_datetime->tm_sec);
+  // apply hardware filters
+  for(i = sizeof(buf)-1; i > 0; i--)
   {
     buf[i] &= and[i];
     buf[i] |= or[i];
   }
+  // set alarm
   write(i2c_rtc, buf, sizeof(buf));
-  //rtc_write(buf+1, 0xA, sizeof(buf)-1);
-  for(i = 0; i < sizeof(buf); i++)
+  #if 0
+  for(i = sizeof(buf)-1; i > 0; i--)
     printf(" %02x", buf[i]);
   printf("\n");
-#if 0
+  #endif
+  buf[0]=7; // alarm enable reg
+  buf[1]=0x10; // enable only alarm0
+  write(i2c_rtc, buf, 2);
+  #if 0
   rtc_read(buf+1, 0xA, sizeof(buf)-1);
   for(i = 0; i < sizeof(buf); i++)
     printf(" %02x", buf[i]);
   printf("\n");
-#endif
+  #endif
 }
 
 int main(int argc, char *argv[])
@@ -221,8 +250,7 @@ int main(int argc, char *argv[])
       break;
 
     case 'a':
-      printf("setting RTC alarm 1 min in the future\n");
-      setalarm();
+      setalarm(30);
       break;
 
     case 's':
