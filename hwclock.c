@@ -36,32 +36,6 @@ void rtc_write(unsigned char *buf, int reg, int n)
   write(i2c_rtc, buf, n);
 }
 
-void i2cdemo(void)
-{
-  int i;
-  unsigned char buf[7];
-  // mask for BCD          SEC   MIN   HOUR  WKDAY DAY   MONTH YEAR
-  unsigned char mask[7] = {0x7F, 0x7F, 0x3F, 0x07, 0x3F, 0x1F, 0xFF};
-
-  rtc_read(buf, 0, sizeof(buf));
-  printf("20");
-  for(i = sizeof(buf)-1; i >= 0; i--)
-    printf("%02x ", buf[i] & mask[i]);
-  printf("\n");
-}
-
-int main_old(int argc, char *argv[])
-{
-  int i;
-  rtc_open(0x6F);
-  for(i = 0; i < 60; i++)
-  {
-    i2cdemo();
-    sleep(1);
-  }
-  return 0;
-}
-
 /* decomposed and Unix time storage */
 struct tm tmval;
 
@@ -181,10 +155,10 @@ void setalarm(int seconds)
   rd_time();
   // convert tmval datetime -> unix time
   ut = mk_time();
-  // add delay, 60s currently
-  printf("current time %s",asctime(gmtime(&ut)));
+  printf("current time: %s",asctime(gmtime(&ut)));
+  // add delta time in the future
   ut += seconds;
-  printf("alarm set to %s",asctime(gmtime(&ut)));
+  printf("alarm set to: %s",asctime(gmtime(&ut)));
   // convert unix time -> date
   alarm_datetime = gmtime(&ut);
   // convert datetime to RTC buf
