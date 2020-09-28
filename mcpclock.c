@@ -74,24 +74,15 @@ int rd_time()
 }
 
 /* write Unix time to RTC */
-void wr_time()
+void wr_time(long ut)
 {
-  struct tm tv;
   struct tm *tvp;
   int v;
   unsigned char buf[9];
 
-  tvp = &tv;
-  tvp->tm_sec  = 1;
-  tvp->tm_min  = 2;
-  tvp->tm_hour = 3;
-  tvp->tm_wday = 3;
-  tvp->tm_mday = 23;
-  tvp->tm_mon  = 9-1;
-  tvp->tm_year = 20+100;
+  tvp = gmtime(&ut);
   buf[0]=0; // write from reg 0
-  buf[1]=0x00; /* stop clock */
-  buf[8]=0x00; /* internal osc, no alarms, MFP off */
+  buf[1]=v; /* set seconds + restart clock */
   v = tvp->tm_min;  v = (((v/10)<<4) + (v%10));
   buf[2]=v; /* set minutes */
   v = tvp->tm_hour; v = (((v/10)<<4) + (v%10));
@@ -105,7 +96,7 @@ void wr_time()
   v = tvp->tm_year; v -= 100; v = (((v/10)<<4) + (v%10));
   buf[7]=v; /* set year */  
   v = tvp->tm_sec;  v = (((v/10)<<4) + (v%10)) | 0x80;
-  buf[1]=v; /* set seconds + restart clock */
+  buf[8]=0x00; /* internal osc, no alarms, MFP off */
   write(i2c_rtc, buf, sizeof(buf));
 }
 
@@ -315,7 +306,7 @@ int main(int argc, char *argv[])
 
     case 'w':
       printf("writing RTC time\n");
-      wr_time();
+      wr_time(tp.tv_sec);
       break;
 
     case 'a':
