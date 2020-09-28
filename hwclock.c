@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #define I2C_SLAVE 0x703
@@ -137,16 +138,32 @@ unsigned char bin2bcd(unsigned char x)
   return (((x/10)&0xF)<<4)|(x%10);
 }
 
-void setalarm(int seconds)
+char *alarm_match[8] = {/*0*/"seconds", /*1*/"minutes", /*2*/"hours", /*3*/"day_of_week", /*4*/"day_of_month", /*5*/"reserved1", /*6*/"reserved2", /*7*/"datetime"/*second, minute, hour, day_of_week, day_of_month, month*/};
+char *alarm_every[8] = {/*0*/"minute", /*1*/"hour", /*2*/"day", /*3*/"week", /*4*/"month", /*5*/"reserved1", /*6*/"reserved2", /*7*/"year"};
+char *day_of_week[8] = {/*0*/"Sun", /*1*/"Mon", /*2*/"Tue", /*3*/"Wed", /*4*/"Thu", /*5*/"Fri", /*6*/"Sat", /*7*/"Sun"};
+
+/* every
+** 0: seconds, every minute)
+** 1: minutes, every hour
+** 2: hours, every day
+** 3: day_of_week, every week
+** 4: day_of_month, every month
+** 5: off
+** 6: reserved
+** 7: datetime (second, minute, hour, day_of_week, day_of_month, month
+*/
+void setalarm(long alarm, long every, long match)
 {
   int i;
   long ut;
   struct tm *alarm_datetime;
-  unsigned char buf[7];
+
+  unsigned char buf[9];
   unsigned char and[7] = {0, 0x7F, 0x7F, 0x3F, 0x07, 0x3F, 0x1F };
-  unsigned char or[7]  = {0, 0x00, 0x00, 0x00, 0x70, 0x00, 0x00 }; // full datetime match
+  //unsigned char or[7]  = {0, 0x00, 0x00, 0x00, 0x70, 0x00, 0x00 }; // full datetime match
   rtc_read(buf+1, 0, sizeof(buf)-1);
-  #if 0
+  #if 1
+  printf("read  RTC reg 07-00:");
   for(i = sizeof(buf)-1; i > 0; i--)
     printf(" %02x", buf[i]&and[i]);
   printf("\n");
@@ -155,49 +172,96 @@ void setalarm(int seconds)
   rd_time();
   // convert tmval datetime -> unix time
   ut = mk_time();
-  printf("current time: %s",asctime(gmtime(&ut)));
-  // add delta time in the future
-  ut += seconds;
-  printf("alarm set to: %s",asctime(gmtime(&ut)));
-  // convert unix time -> date
-  alarm_datetime = gmtime(&ut);
-  // convert datetime to RTC buf
-  buf[0] = 0xA; // alarm settings
-  buf[7] = bin2bcd(alarm_datetime->tm_year % 100);
-  buf[6] = bin2bcd(alarm_datetime->tm_mon + 1);
-  buf[5] = bin2bcd(alarm_datetime->tm_mday);
-  buf[4] = bin2bcd(alarm_datetime->tm_wday ? alarm_datetime->tm_wday : 7);
-  buf[3] = bin2bcd(alarm_datetime->tm_hour);
-  buf[2] = bin2bcd(alarm_datetime->tm_min);
-  buf[1] = bin2bcd(alarm_datetime->tm_sec);
-  // apply hardware filters
-  for(i = sizeof(buf)-1; i > 0; i--)
+  printf("RTC  current datetime: %s",asctime(gmtime(&ut)));
+
+  every &= 7; // limit to values 0-7
+  if(every == 7) // every year
   {
-    buf[i] &= and[i];
-    buf[i] |= or[i];
+    // convert unix time -> date
+    alarm_datetime = gmtime(&match);
+    printf("alarm%d match datetime: %s", alarm, asctime(alarm_datetime));
+    // convert datetime to RTC buf
+    buf[7] = bin2bcd(alarm_datetime->tm_year % 100);
+    buf[6] = bin2bcd(alarm_datetime->tm_mon + 1);
+    buf[5] = bin2bcd(alarm_datetime->tm_mday);
+    buf[4] = bin2bcd(alarm_datetime->tm_wday ? alarm_datetime->tm_wday : 7);
+    buf[3] = bin2bcd(alarm_datetime->tm_hour);
+    buf[2] = bin2bcd(alarm_datetime->tm_min);
+    buf[1] = bin2bcd(alarm_datetime->tm_sec);
   }
+  if(every < 5)
+  {
+    printf("alarm%d every %s when %s = %d %s\n", alarm, alarm_every[every], alarm_match[every], match, every==3 ? day_of_week[match%7] : "");
+    buf[1+every] = bin2bcd(match);
+  }
+  if(every == 5)
+  {
+    printf("alarm%d disabled\n", alarm);
+  }
+
+  buf[0] = 10+7*alarm; // alarm settings
+  // apply hardware filters
+  for(i = sizeof(and)-1; i > 0; i--)
+    buf[i] &= and[i];
+  buf[4] |= every<<4;
   // set alarm
-  write(i2c_rtc, buf, sizeof(buf));
-  #if 0
-  for(i = sizeof(buf)-1; i > 0; i--)
+  write(i2c_rtc, buf, sizeof(and));
+  #if 1
+  printf("write RTC reg %02x-%02x:", buf[0]+sizeof(and)-2,buf[0]);
+  for(i = sizeof(and)-1; i > 0; i--)
     printf(" %02x", buf[i]);
   printf("\n");
   #endif
-  buf[0]=7; // alarm enable reg
-  buf[1]=0x10; // enable only alarm0
+  // TODO: first read reg 7, then enable/disable
+  buf[0] = 7; // alarm enable reg
+  if(every == 5) // disable
+    buf[1] = buf[8] & ~(0x10<<alarm);
+  else
+    buf[1] = buf[8] | (0x10<<alarm);
   write(i2c_rtc, buf, 2);
+  printf("write RTC reg    %02x: %02x\n", buf[0], buf[1]);
   #if 0
-  rtc_read(buf+1, 0xA, sizeof(buf)-1);
+  rtc_read(buf+1, 0xA, sizeof(and)-1);
   for(i = 0; i < sizeof(buf); i++)
     printf(" %02x", buf[i]);
   printf("\n");
   #endif
 }
 
+// TODO support alarm 0 and 1 (currently only 0)
+// 0s1  alarm0 match      seconds=1, every minute
+// 0h2  alarm0 match        hours=2, every day
+// 0W3  alarm0 match  day_of_week=3, Wednesday every week (0:SUN - 6:FRI)
+// 0D4  alarm0 match day_of_month=4, 4th every month
+// 0M5  alarm0 match        month=5, May every year
+// 0u6  alarm0 match    unix_time=6, (seconds past 1970-01-01 UTC)
+// 1o   alarm1 off
+void alarmparse(char *a, long *v)
+{
+  char *alarm_match = "smhWDoou";
+  v[0] = a[0]&1; // alarm module 0 or 1 
+  v[1] = (strchr(alarm_match, a[1])-alarm_match)%strlen(alarm_match); // match every ...
+  v[2] = -1;     // match value
+  if(strlen(a)>2)
+    v[2] = atoi(a+2);
+}
+
+void settrim(char t)
+{
+  unsigned char buf[2];
+  buf[0] = 8; // trim register
+  buf[1] = ((t<0?-t:t)&0x7F)|((~t)&0x80);
+  write(i2c_rtc, buf, 2);
+  printf("digital trim %+d ppm (%d ms %s per day)\n", t, (t<0?-t:t) * 24*60*1000 / (24*60*60) , t<0 ? "slower" : "faster");
+  rtc_read(buf+1, 8, sizeof(buf)-1);
+  printf("read  RTC reg 08: %02x\n", buf[1]);
+}
+
 int main(int argc, char *argv[])
 {
   int rtc_running;
   unsigned long ut;
+  long alm[3];
 
   int result;
   struct timespec tp;
@@ -224,7 +288,12 @@ int main(int argc, char *argv[])
       break;
 
     case 'a':
-      setalarm(30);
+      alarmparse(argv[1]+2, alm);
+      setalarm(alm[0], alm[1], alm[2]);
+      break;
+
+    case 't':
+      settrim(atoi(argv[1]+2));
       break;
 
     case 's':
@@ -259,9 +328,17 @@ int main(int argc, char *argv[])
   return 0;
 
 err:
-  printf("Usage: hwclock -[r|w|s]\n\n");
-  printf("-r: read RTC time\n");
-  printf("-w: write system time to RTC\n");
-  printf("-s: set system time to RTC time\n");
+  printf("Usage: hwclock -[r|w|s|a|e|m]\n\n");
+  printf("-r        : read RTC time\n");
+  printf("-w        : write system time to RTC\n");
+  printf("-s        : set system time to RTC time\n");
+  printf("-t<int>   : set trim +-int ppm\n");
+  printf("-a<str>   : set alarm str, example:\n");
+  printf("-a0s10    : alarm 0 every minute when seconds=10\n");
+  printf("-a0m30    : alarm 0 every hour   when minutes=30\n");
+  printf("-a0W2     : alarm 0 every week   when day_of_week=2 Tuesday\n");
+  printf("-a0D1     : alarm 0 every month  when day_of_month=1\n");
+  printf("-a0u12345 : alarm 0 when  unix_time=12345\n");
+  printf("-a1o      : alarm 1 off\n");
   return 1;
 }
