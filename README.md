@@ -1,3 +1,4 @@
 # hwclock for saxonsoc
 
-It is few days off (internal mktime has bug?)
+MCP7940N I2C user-space RTC tool, sets/reads current time
+alarms and digital trim.
