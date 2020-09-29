@@ -82,6 +82,7 @@ void wr_time(long ut)
 
   tvp = gmtime(&ut);
   buf[0]=0; // write from reg 0
+  v = tvp->tm_sec;  v = (((v/10)<<4) + (v%10)) | 0x80;
   buf[1]=v; /* set seconds + restart clock */
   v = tvp->tm_min;  v = (((v/10)<<4) + (v%10));
   buf[2]=v; /* set minutes */
@@ -95,7 +96,6 @@ void wr_time(long ut)
   buf[6]=v; /* set month */  
   v = tvp->tm_year; v -= 100; v = (((v/10)<<4) + (v%10));
   buf[7]=v; /* set year */  
-  v = tvp->tm_sec;  v = (((v/10)<<4) + (v%10)) | 0x80;
   buf[8]=0x00; /* internal osc, no alarms, MFP off */
   write(i2c_rtc, buf, sizeof(buf));
 }
@@ -369,7 +369,7 @@ err:
   printf("-a0s00    : alarm 0 every minute when seconds=00 (00-59\n");
   printf("-a0m00    : alarm 0 every hour   when minutes=00 (00-59)\n");
   printf("-a0W1     : alarm 0 every week   when day_of_week=1 (1-7 Mon-Sun)\n");
-  printf("-a0D01    : alarm 0 every month  when day_of_month=01 (01-31\n");
+  printf("-a0D01    : alarm 0 every month  when day_of_month=01 (01-31)\n");
   printf("-a0u12345 : alarm 0 when  unix_time=12345\n");
   printf("-a1o      : alarm 1 off\n");
   return 1;
