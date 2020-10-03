@@ -321,12 +321,12 @@ int main(int argc, char *argv[])
 
   result = clock_gettime(clk_id, &tp);
 
+  rtc_open(0x6F);
   if(argc==1)
   {
     print_alarm();
     return 0;
   }
-  rtc_open(0x6F);
   for (; argc>1 && argv[1][0]=='-'; argc--, argv++) {
     switch (argv[1][1]) {
 
