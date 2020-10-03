@@ -136,7 +136,7 @@ char *alarm_every[8] = {/*0*/"minute", /*1*/"hour", /*2*/"day", /*3*/"week", /*4
 char *day_of_week[8] = {/*0*/"???", /*1*/"Mon", /*2*/"Tue", /*3*/"Wed", /*4*/"Thu", /*5*/"Fri", /*6*/"Sat", /*7*/"Sun"};
 unsigned char and[7] = {0x7F, 0x7F, 0x3F, 0x07, 0x3F, 0x1F, 0xFF};
 
-/* every
+/* set alarm to match
 ** 0: seconds, every minute)
 ** 1: minutes, every hour
 ** 2: hours, every day
@@ -145,6 +145,9 @@ unsigned char and[7] = {0x7F, 0x7F, 0x3F, 0x07, 0x3F, 0x1F, 0xFF};
 ** 5: off
 ** 6: reserved
 ** 7: datetime (second, minute, hour, day_of_week, day_of_month, month
+**
+** if 2 alarms are enabled, then both must have been triggered
+** to activate wake-on-rtc board power-on.
 */
 void setalarm(long alarm, long every, long match)
 {
@@ -214,6 +217,37 @@ void alarmparse(char *a, long *v)
   #endif
 }
 
+char *print_tdreg_delimiter = "\n::  --";
+
+/* print RTC regs in HEX with AND mask and delimiters
+** human readable
+** buf = pointer to RTC reg buffer
+** n = buf size, 7:year included, 6: no year
+*/
+void print_tdreg(unsigned char *buf, int n)
+{
+  int j;
+  for(j = 6; j >= 0; j--)
+    if(j < n)
+    {
+      printf("%02x", buf[j] & and[j]);
+      if(j)
+        printf("%c", print_tdreg_delimiter[j]);
+    }
+    else
+      printf("   ");
+}
+
+void print_datetime(void)
+{
+  unsigned char buf[7];
+  rtc_read(buf, 0, sizeof(buf));
+  printf("RTC current datetime = ");
+  print_tdreg(buf, 7);
+  printf("\n");
+}
+
+// print current time and alarm settings
 void print_alarm(void)
 {
   long ut;
@@ -221,15 +255,11 @@ void print_alarm(void)
   int i, j, r;
   int every;
   long match;
-
-  //rd_time();
-  //ut = mk_time();
-  //printf("RTC current datetime = %s", asctime(gmtime(&ut)));
+  int skiprd = 10;
 
   rtc_read(buf, 0, sizeof(buf));
   printf("RTC current datetime = ");
-  for(j = 6; j >= 0; j--)
-    printf(" %02x", buf[j] & and[j]);
+  print_tdreg(buf, 7);
   printf("\n");
   for(i = 0; i < 2; i++)
   {
@@ -240,9 +270,8 @@ void print_alarm(void)
       every = (buf[r+3]&0x70)>>4;
       if(every==7)
       {
-        printf("when datetime =    ");
-        for(j = 5; j >= 0; j--)
-          printf(" %02x", buf[r+j] & and[j]);
+        printf("when datetime = ");
+        print_tdreg(buf+r, 6);
       }
       else
       {
@@ -254,7 +283,6 @@ void print_alarm(void)
     {
       printf("off");
     }
-
     printf("\n");
   }
 }
@@ -305,7 +333,6 @@ int main(int argc, char *argv[])
       break;
 
     case 'w':
-      printf("writing RTC time\n");
       wr_time(tp.tv_sec);
       break;
 
@@ -327,7 +354,6 @@ int main(int argc, char *argv[])
       break;
 
     case 's':
-      printf("setting system time from RTC\n");
       rtc_running = rd_time();
       if( rtc_running==0 ) {
         printf("RTC not running\n");
@@ -364,7 +390,7 @@ err:
   printf("-s        : set system time to RTC time\n");
   printf("-t        : print trim\n");
   printf("-t<int>   : set trim +-int ppm\n");
-  printf("-a        : print alarms\n");
+  printf("-a        : print current time and alarms\n");
   printf("-a<str>   : set alarm str, example:\n");
   printf("-a0s00    : alarm 0 every minute when seconds=00 (00-59\n");
   printf("-a0m00    : alarm 0 every hour   when minutes=00 (00-59)\n");
