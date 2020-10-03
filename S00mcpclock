@@ -1,0 +1,23 @@
+#!/bin/sh
+# /etc/init.d/S00mcpclock
+# Load system time from RTC....
+#
+
+case "$1" in
+  start)
+	echo "Loading system time from RTC:"
+	/sbin/mcpclock -s
+	;;
+  stop)
+	echo "Stopping RTC: (nothing todo)"
+	;;
+  restart|reload)
+	"$0" stop
+	"$0" start
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
