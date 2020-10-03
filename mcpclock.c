@@ -146,8 +146,8 @@ unsigned char and[7] = {0x7F, 0x7F, 0x3F, 0x07, 0x3F, 0x1F, 0xFF};
 ** 6: reserved
 ** 7: datetime (second, minute, hour, day_of_week, day_of_month, month
 **
-** if 2 alarms are enabled, then both must have been triggered
-** to activate wake-on-rtc board power-on.
+** if one alarm is enabled and WAITing, wake-on-RTC comes when it is DONE
+** if both alarms are enabled and WAITing, wake-on-RTC comes when both are DONE.
 */
 void setalarm(long alarm, long every, long match)
 {
@@ -191,7 +191,6 @@ void setalarm(long alarm, long every, long match)
   write(i2c_rtc, buf+7, 2);
 }
 
-// TODO support alarm 0 and 1 (currently only 0)
 // 0s1  alarm0 match      seconds=1, every minute
 // 0h2  alarm0 match        hours=2, every day
 // 0W3  alarm0 match  day_of_week=3, Wednesday every week (0:SUN - 6:FRI)
@@ -278,6 +277,7 @@ void print_alarm(void)
         match = buf[r+every] & and[every];
         printf("every %s when %s = %02x %s", alarm_every[every], alarm_match[every], match, every==3 ? day_of_week[match&7] : "");
       }
+      printf(" %s", buf[r+3]&8 ? "DONE" : "WAIT");
     }
     else
     {
@@ -321,7 +321,11 @@ int main(int argc, char *argv[])
 
   result = clock_gettime(clk_id, &tp);
 
-  if(argc==1) goto err;
+  if(argc==1)
+  {
+    print_alarm();
+    return 0;
+  }
   rtc_open(0x6F);
   for (; argc>1 && argv[1][0]=='-'; argc--, argv++) {
     switch (argv[1][1]) {
@@ -396,7 +400,8 @@ err:
   printf("-a0m00    : alarm 0 every hour   when minutes=00 (00-59)\n");
   printf("-a0W1     : alarm 0 every week   when day_of_week=1 (1-7 Mon-Sun)\n");
   printf("-a0D01    : alarm 0 every month  when day_of_month=01 (01-31)\n");
-  printf("-a0u12345 : alarm 0 when  unix_time=12345\n");
+  printf("-a0<int>  : alarm 0 when unix_time=<int>\n");
+  printf("-a0u$(date +%%s -ud \"2020-01-15 07:55\")\n");
   printf("-a1o      : alarm 1 off\n");
   return 1;
 }
