@@ -387,7 +387,7 @@ err:
   printf("Usage: hwclock -[r|w|s|t|a]\n\n");
   printf("-r        : read RTC time\n");
   printf("-w        : write system time to RTC\n");
-  printf("-s        : set system time to RTC time\n");
+  printf("-s        : write RTC to system time (recommended at system boot)\n");
   printf("-t        : print trim\n");
   printf("-t<int>   : set trim +-int ppm\n");
   printf("-a        : print current time and alarms\n");
