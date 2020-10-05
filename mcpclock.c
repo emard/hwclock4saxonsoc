@@ -94,7 +94,7 @@ void wr_time(long ut)
   buf[5]=v; /* set date */
   v = tvp->tm_mon + 1;  v = (((v/10)<<4) + (v%10));
   buf[6]=v; /* set month */  
-  v = tvp->tm_year; v -= 100; v = (((v/10)<<4) + (v%10));
+  v = tvp->tm_year; v %= 100; v = (((v/10)<<4) + (v%10));
   buf[7]=v; /* set year */  
   buf[8]=0x00; /* internal osc, no alarms, MFP off */
   write(i2c_rtc, buf, sizeof(buf));
