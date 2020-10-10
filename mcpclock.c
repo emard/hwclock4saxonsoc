@@ -7,14 +7,6 @@
 
 #define I2C_SLAVE 0x703
 #define O_RDWR 2
-#define CLOCK_REALTIME 0
-
-typedef int clockid_t;
-
-struct timespec {
-  time_t tv_sec;
-  long tv_nsec;
-};
 
 int i2c_rtc;
 
@@ -333,7 +325,7 @@ int main(int argc, char *argv[])
     case 'r':
       rd_time();
       ut = mk_time();
-      printf("%d\n", ut);
+      printf("%u\n", ut);
       break;
 
     case 'w':
